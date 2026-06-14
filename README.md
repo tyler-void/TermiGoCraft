@@ -17,7 +17,7 @@ half-block pixels into a terminal, with real physics and ray-traced lighting.
 </div>
 
 <p align="center">
-  <img src="docs/demo.gif" alt="TermiGoCraft — a first-person voxel world running in the terminal" width="800">
+  <img src="docs/demo.gif" alt="TermiGoCraft — a first-person voxel world running in the terminal" width="700">
 </p>
 
 ---
