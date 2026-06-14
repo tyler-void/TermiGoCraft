@@ -16,10 +16,9 @@ half-block pixels into a terminal, with real physics and ray-traced lighting.
 
 </div>
 
-> **📹 Demo:** _add a recording here so people can see it move._
-> Record one in kitty with [asciinema](https://asciinema.org) + [agg](https://github.com/asciinema/agg):
-> `asciinema rec demo.cast` → play the game → `agg demo.cast docs/demo.gif`, then drop it in.
-<!-- Once you have the gif, paste this:  <p align="center"><img src="docs/demo.gif" width="700"></p> -->
+<p align="center">
+  <img src="docs/demo.gif" alt="TermiGoCraft — a first-person voxel world running in the terminal" width="800">
+</p>
 
 ---
 
