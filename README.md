@@ -9,6 +9,10 @@ between terrain and entities is automatically correct. Output uses
 [`tcell/v2`](https://github.com/gdamore/tcell) with **truecolor half-block (`▀`) pixels**
 (two pixels per terminal cell). Tested in **kitty**.
 
+The player has a physical AABB body with **gravity, voxel collision, and jumping**
+(toggle a creative **free-fly** mode with `G`), and the world is lit by **ray-traced
+directional sunlight with hard cast shadows and voxel ambient occlusion** (toggle with `L`).
+
 ## Build & run
 
 ```bash
@@ -24,11 +28,14 @@ sets `COLORTERM=truecolor` works, others fall back to the nearest palette).
 | Keys | Action |
 |------|--------|
 | `W` `A` `S` `D` | move (relative to facing) |
-| `Space` / `C` | move up / down |
+| `Space` | jump (walking) / ascend (flying) |
+| `C` | descend (flying) |
 | Arrow keys | look around |
 | `F` / `Enter` | break the targeted block |
 | `R` | place the selected block |
 | `Q` / `E` or `1`–`9` | select block type |
+| `G` | toggle walk / fly |
+| `L` | toggle lighting (sun + shadows) |
 | `H` / `?` | toggle help |
 | `Esc` / `Ctrl+C` | quit |
 

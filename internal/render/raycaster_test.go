@@ -26,7 +26,7 @@ func TestRenderWorldFillsAndMissesSky(t *testing.T) {
 	w, cam := buildWall()
 	b := NewBuffer(60, 30)
 	b.Clear(Sky)
-	RenderWorld(b, w, cam)
+	RenderWorld(b, w, cam, DefaultSun(), false)
 
 	// Center pixel should hit the wall (depth set, color not sky).
 	ci := (b.H/2)*b.W + b.W/2
@@ -44,7 +44,7 @@ func TestRenderWorldNoFisheye(t *testing.T) {
 	w, cam := buildWall()
 	b := NewBuffer(80, 40)
 	b.Clear(Sky)
-	RenderWorld(b, w, cam)
+	RenderWorld(b, w, cam, DefaultSun(), false)
 
 	row := b.H / 2
 	center := b.Depth[row*b.W+b.W/2]
@@ -62,8 +62,9 @@ func BenchmarkFrame(b *testing.B) {
 	buf := NewBuffer(120, 40) // 240x80 px, the default target
 	b.ReportAllocs()
 	b.ResetTimer()
+	sun := DefaultSun()
 	for i := 0; i < b.N; i++ {
 		buf.Clear(Sky)
-		RenderWorld(buf, w, cam)
+		RenderWorld(buf, w, cam, sun, true) // lit path: must stay 0 allocs/op
 	}
 }

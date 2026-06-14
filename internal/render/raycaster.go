@@ -14,7 +14,9 @@ const ViewDist = 48.0
 // RenderWorld casts one ray per pixel into the voxel world (Pass A). The camera
 // basis and projection constants are computed once per frame; the per-pixel
 // inner loop only does value math and a DDA walk, so it allocates nothing.
-func RenderWorld(b *Buffer, w *world.World, cam *camera.Camera) {
+// When lit is true, each hit is shaded by the sun (directional + hard shadow +
+// ambient occlusion); otherwise the flat per-face fallback shading is used.
+func RenderWorld(b *Buffer, w *world.World, cam *camera.Camera, sun Sun, lit bool) {
 	fwd := cam.Direction()
 	right := cam.Right()
 	up := cam.Up()
@@ -38,7 +40,13 @@ func RenderWorld(b *Buffer, w *world.World, cam *camera.Camera) {
 			// distance onto the forward axis. This is the shared depth metric
 			// the rasterizer also writes, and it removes fisheye distortion.
 			z := hit.Dist * dir.Dot(fwd)
-			f := faceFactor(hit.Face) * distFactor(hit.Dist, ViewDist)
+			var f float64
+			if lit {
+				hp := cam.Pos.Add(dir.Scale(hit.Dist))
+				f = lightAt(w, hit, hp, sun)
+			} else {
+				f = faceFactor(hit.Face) * distFactor(hit.Dist, ViewDist)
+			}
 			b.TestSet(x, y, float32(z), shade(BlockColor(hit.Block), f))
 		}
 	}

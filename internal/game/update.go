@@ -1,30 +1,39 @@
 package game
 
 import (
-	"math"
-
 	"github.com/tyler-void/TermiGoCraft/internal/input"
+	"github.com/tyler-void/TermiGoCraft/internal/physics"
 	"github.com/tyler-void/TermiGoCraft/internal/world"
 )
 
-// apply mutates state for a single action. It returns true when the player asked
-// to quit. SelectSlot carries its slot index in the payload.
-func (g *Game) apply(a input.Action, payload int) bool {
+// apply handles one action. Movement actions accumulate into the per-tick
+// intent; discrete actions take effect immediately. Returns true on quit.
+func (g *Game) apply(a input.Action, payload int, in *physics.Intent) bool {
 	switch a {
 	case input.Quit:
 		return true
+
+	// Movement intent (consumed by physics this tick).
 	case input.MoveForward:
-		g.moveHoriz(g.moveSpeed)
+		in.Forward += 1
 	case input.MoveBack:
-		g.moveHoriz(-g.moveSpeed)
-	case input.StrafeLeft:
-		g.strafe(-g.moveSpeed)
+		in.Forward -= 1
 	case input.StrafeRight:
-		g.strafe(g.moveSpeed)
-	case input.MoveUp:
-		g.cam.Pos.Y += g.moveSpeed
+		in.Strafe += 1
+	case input.StrafeLeft:
+		in.Strafe -= 1
+	case input.Jump:
+		if g.body.Mode == physics.Fly {
+			in.Up = true
+		} else {
+			in.Jump = true
+		}
 	case input.MoveDown:
-		g.cam.Pos.Y -= g.moveSpeed
+		if g.body.Mode == physics.Fly {
+			in.Down = true
+		}
+
+	// Look (applied directly).
 	case input.LookLeft:
 		g.cam.Yaw -= g.turnSpeed
 	case input.LookRight:
@@ -35,14 +44,14 @@ func (g *Game) apply(a input.Action, payload int) bool {
 	case input.LookDown:
 		g.cam.Pitch -= g.turnSpeed
 		g.cam.ClampPitch()
+
+	// World edits.
 	case input.Break:
 		g.world.Break(g.target)
 	case input.Place:
-		px, py, pz := g.playerCell()
-		if g.world.Place(g.target, g.selected, px, py, pz) {
-			// keep aiming feedback fresh after a change
-			g.recomputeTarget()
-		}
+		g.placeBlock()
+
+	// Selection.
 	case input.SelectNext:
 		g.cycleSelection(1)
 	case input.SelectPrev:
@@ -50,37 +59,46 @@ func (g *Game) apply(a input.Action, payload int) bool {
 	case input.SelectSlot:
 		if payload >= 0 && payload < len(world.Placeable) {
 			g.selSlot = payload
-			g.setSelected()
+			g.selected = world.Placeable[g.selSlot]
 		}
+
+	// Toggles.
+	case input.ToggleFly:
+		if g.body.Mode == physics.Walk {
+			g.body.Mode = physics.Fly
+		} else {
+			g.body.Mode = physics.Walk
+		}
+		g.body.Vel = g.body.Vel.Scale(0) // stop cleanly on mode switch
+	case input.ToggleLighting:
+		g.lit = !g.lit
 	case input.ToggleHelp:
 		g.showHelp = !g.showHelp
 	}
 	return false
 }
 
-func (g *Game) moveHoriz(amt float64) {
-	d := g.cam.Direction()
-	d.Y = 0
-	d = d.Normalize()
-	g.cam.Pos = g.cam.Pos.Add(d.Scale(amt))
-}
-
-func (g *Game) strafe(amt float64) {
-	g.cam.Pos = g.cam.Pos.Add(g.cam.Right().Scale(amt))
+// placeBlock puts the selected block against the targeted face, unless that cell
+// is out of bounds, occupied, or would intersect the player's body (FR-009).
+func (g *Game) placeBlock() {
+	if !g.target.OK {
+		return
+	}
+	dx, dy, dz := g.target.Face.Normal()
+	nx, ny, nz := g.target.X+dx, g.target.Y+dy, g.target.Z+dz
+	if !g.world.InBounds(nx, ny, nz) || g.world.Solid(nx, ny, nz) {
+		return
+	}
+	if g.body.OccupiesCell(nx, ny, nz) {
+		return
+	}
+	g.world.Set(nx, ny, nz, g.selected)
 }
 
 func (g *Game) cycleSelection(dir int) {
 	n := len(world.Placeable)
 	g.selSlot = (g.selSlot + dir + n) % n
-	g.setSelected()
-}
-
-func (g *Game) setSelected() {
 	g.selected = world.Placeable[g.selSlot]
-}
-
-func (g *Game) playerCell() (int, int, int) {
-	return int(math.Floor(g.cam.Pos.X)), int(math.Floor(g.cam.Pos.Y)), int(math.Floor(g.cam.Pos.Z))
 }
 
 // recomputeTarget casts the center ray to find the block the player is aiming at.

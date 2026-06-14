@@ -43,7 +43,7 @@ func TestEntityOcclusion(t *testing.T) {
 	// Case 1: entity BEHIND the wall (z=20). Render world then entity.
 	behind := NewBuffer(60, 30)
 	behind.Clear(Sky)
-	RenderWorld(behind, w, cam)
+	RenderWorld(behind, w, cam, DefaultSun(), false)
 	before := countNonSky(behind)
 	RenderMesh(behind, cube, geom.Vec3{X: 20, Y: 20, Z: 20}, red, cam)
 	afterBehind := countNonSky(behind)
@@ -58,7 +58,7 @@ func TestEntityOcclusion(t *testing.T) {
 	// Case 2: entity IN FRONT of the wall (z=5). Should draw red pixels.
 	front := NewBuffer(60, 30)
 	front.Clear(Sky)
-	RenderWorld(front, w, cam)
+	RenderWorld(front, w, cam, DefaultSun(), false)
 	RenderMesh(front, cube, geom.Vec3{X: 20, Y: 20, Z: 5}, red, cam)
 	if countColor(front, red) == 0 {
 		t.Fatal("entity in front of the wall was not drawn")

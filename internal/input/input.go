@@ -20,11 +20,14 @@ const (
 	LookRight
 	LookUp
 	LookDown
+	Jump
 	Break
 	Place
 	SelectNext
 	SelectPrev
 	SelectSlot // payload = slot index (0-based)
+	ToggleFly
+	ToggleLighting
 	ToggleHelp
 	Quit
 )
@@ -56,7 +59,9 @@ func Map(ev *tcell.EventKey) (Action, int) {
 		case 'd', 'D':
 			return StrafeRight, 0
 		case ' ':
-			return MoveUp, 0
+			// Context-dependent: the game routes Jump to a jump while walking
+			// and to ascending while flying.
+			return Jump, 0
 		case 'c', 'C':
 			return MoveDown, 0
 		case 'f', 'F':
@@ -67,6 +72,10 @@ func Map(ev *tcell.EventKey) (Action, int) {
 			return SelectNext, 0
 		case 'q', 'Q':
 			return SelectPrev, 0
+		case 'g', 'G':
+			return ToggleFly, 0
+		case 'l', 'L':
+			return ToggleLighting, 0
 		case 'h', 'H', '?':
 			return ToggleHelp, 0
 		case '1', '2', '3', '4', '5', '6', '7', '8', '9':

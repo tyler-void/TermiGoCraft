@@ -6,15 +6,17 @@ import (
 	"github.com/gdamore/tcell/v2"
 
 	"github.com/tyler-void/TermiGoCraft/internal/input"
+	"github.com/tyler-void/TermiGoCraft/internal/physics"
 	"github.com/tyler-void/TermiGoCraft/internal/render"
 )
 
-// frameRate is the fixed render cadence (~30 FPS).
+// frameRate is the fixed render + physics cadence.
 const frameRate = 30
+const dt = 1.0 / float64(frameRate)
 
 // Run drives the game until the player quits. Input is polled on a separate
-// goroutine and drained each tick, so rendering never blocks on input and a
-// burst of keypresses cannot stall a frame.
+// goroutine and drained each tick; physics integrates every tick (so gravity
+// applies regardless of input).
 func (g *Game) Run() {
 	events := make(chan tcell.Event, 128)
 	quit := make(chan struct{})
@@ -22,7 +24,7 @@ func (g *Game) Run() {
 	go func() {
 		for {
 			ev := g.scr.PollEvent()
-			if ev == nil { // screen finalized
+			if ev == nil {
 				return
 			}
 			select {
@@ -40,12 +42,12 @@ func (g *Game) Run() {
 	g.render()
 
 	for {
-		// Drain all input that has arrived since the last tick.
+		var intent physics.Intent
 		draining := true
 		for draining {
 			select {
 			case ev := <-events:
-				if g.handle(ev) {
+				if g.handle(ev, &intent) {
 					close(quit)
 					return
 				}
@@ -54,6 +56,8 @@ func (g *Game) Run() {
 			}
 		}
 
+		physics.Step(g.world, g.body, intent, g.cam.Yaw, dt)
+		g.cam.Pos = g.body.Eye()
 		g.recomputeTarget()
 		g.render()
 		<-ticker.C
@@ -61,7 +65,7 @@ func (g *Game) Run() {
 }
 
 // handle processes a single event; returns true on quit.
-func (g *Game) handle(ev tcell.Event) bool {
+func (g *Game) handle(ev tcell.Event, intent *physics.Intent) bool {
 	switch e := ev.(type) {
 	case *tcell.EventResize:
 		g.scr.Sync()
@@ -69,7 +73,7 @@ func (g *Game) handle(ev tcell.Event) bool {
 		g.buf.Resize(cols, rows)
 	case *tcell.EventKey:
 		act, payload := input.Map(e)
-		return g.apply(act, payload)
+		return g.apply(act, payload, intent)
 	}
 	return false
 }
@@ -78,13 +82,20 @@ func (g *Game) handle(ev tcell.Event) bool {
 // draws the HUD on top.
 func (g *Game) render() {
 	g.buf.Clear(render.Sky)
-	render.RenderWorld(g.buf, g.world, g.cam)
+	render.RenderWorld(g.buf, g.world, g.cam, g.sun, g.lit)
 	for i := range g.entities {
 		render.RenderMesh(g.buf, g.entities[i].Mesh, g.entities[i].Pos, g.entities[i].Color, g.cam)
 	}
 	render.RenderHeld(g.buf, g.heldMesh, render.BlockColor(g.selected), g.cam)
 	render.RenderSelection(g.buf, g.target, g.cam)
 	g.buf.Present(g.scr)
-	render.RenderHUD(g.scr, g.selected, g.showHelp)
+	render.RenderHUD(g.scr, render.HUDState{
+		Selected: g.selected,
+		Targeted: g.target.OK,
+		Flying:   g.body.Mode == physics.Fly,
+		Lit:      g.lit,
+		Pos:      g.cam.Pos,
+		ShowHelp: g.showHelp,
+	})
 	g.scr.Show()
 }

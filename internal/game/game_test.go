@@ -6,10 +6,10 @@ import (
 	"github.com/gdamore/tcell/v2"
 
 	"github.com/tyler-void/TermiGoCraft/internal/input"
+	"github.com/tyler-void/TermiGoCraft/internal/physics"
 	"github.com/tyler-void/TermiGoCraft/internal/world"
 )
 
-// newSimGame builds a game backed by a headless simulation screen.
 func newSimGame(t *testing.T) (*Game, tcell.SimulationScreen) {
 	t.Helper()
 	scr := tcell.NewSimulationScreen("")
@@ -17,14 +17,19 @@ func newSimGame(t *testing.T) (*Game, tcell.SimulationScreen) {
 		t.Fatalf("sim screen init: %v", err)
 	}
 	scr.SetSize(120, 40)
-	g := New(scr, 120, 40)
-	return g, scr
+	return New(scr, 120, 40), scr
+}
+
+func step(g *Game, n int) {
+	for i := 0; i < n; i++ {
+		physics.Step(g.world, g.body, physics.Intent{}, g.cam.Yaw, dt)
+		g.cam.Pos = g.body.Eye()
+	}
 }
 
 func TestNewGeneratesWorld(t *testing.T) {
 	g, scr := newSimGame(t)
 	defer scr.Fini()
-
 	solid := 0
 	for _, b := range g.world.Blocks {
 		if b.IsSolid() {
@@ -34,87 +39,102 @@ func TestNewGeneratesWorld(t *testing.T) {
 	if solid == 0 {
 		t.Fatal("generated world has no solid blocks")
 	}
-	// spawn should be above the ground column at the centre
-	cx, cz := g.world.SX/2, g.world.SZ/2
-	if g.world.Solid(cx, int(g.cam.Pos.Y), cz) {
-		t.Fatal("camera spawned inside a solid block")
+}
+
+func TestPlayerFallsAndLands(t *testing.T) {
+	g, scr := newSimGame(t)
+	defer scr.Fini()
+	step(g, 180) // a few seconds of physics
+	if !g.body.Grounded {
+		t.Fatal("player should land (be grounded) after falling onto the generated ground")
+	}
+	if physics.Overlaps(g.world, g.body.Feet, g.body.Half, g.body.Height) {
+		t.Fatal("landed player overlaps terrain")
 	}
 }
 
-// TestFramePipeline drives the full render pass order headlessly and ensures it
-// does not panic and produces output.
 func TestFramePipeline(t *testing.T) {
 	g, scr := newSimGame(t)
 	defer scr.Fini()
-
-	g.recomputeTarget()
+	step(g, 180)
 	for i := 0; i < 3; i++ {
-		g.render()
+		g.render() // must not panic with lighting on
 	}
-	// Aim downward so the centre ray hits the ground, then verify a target.
-	g.cam.Pitch = -1.0
+	g.cam.Pitch = -1.2
 	g.recomputeTarget()
 	if !g.target.OK {
 		t.Fatal("looking down at the ground should yield a target block")
 	}
 }
 
-// TestEditFlow exercises break/place through the action layer.
 func TestEditFlow(t *testing.T) {
 	g, scr := newSimGame(t)
 	defer scr.Fini()
-
-	g.cam.Pitch = -1.2 // look down at the ground
+	step(g, 180)
+	g.cam.Pitch = -1.4
 	g.recomputeTarget()
 	if !g.target.OK {
-		t.Skip("no ground target at this spawn; generation-dependent")
+		t.Skip("no ground target at this spawn (generation-dependent)")
 	}
 	bx, by, bz := g.target.X, g.target.Y, g.target.Z
-
-	// Break removes the targeted block.
-	g.apply(input.Break, 0)
+	var in physics.Intent
+	g.apply(input.Break, 0, &in)
 	if g.world.Solid(bx, by, bz) {
 		t.Fatal("Break did not clear the targeted block")
 	}
-
-	// Select stone and place against a fresh target.
-	g.recomputeTarget()
-	if g.target.OK {
-		dx, dy, dz := g.target.Face.Normal()
-		nx, ny, nz := g.target.X+dx, g.target.Y+dy, g.target.Z+dz
-		g.selSlot = 0
-		g.selected = world.Stone
-		g.apply(input.Place, 0)
-		if g.world.InBounds(nx, ny, nz) && g.world.At(nx, ny, nz) != world.Stone && !sameAsPlayer(g, nx, ny, nz) {
-			// placement may legitimately be rejected (self/occupied); only fail
-			// if it silently did nothing on a clearly valid empty neighbor
-			if !g.world.Solid(nx, ny, nz) {
-				t.Logf("place no-op at (%d,%d,%d) — acceptable if blocked", nx, ny, nz)
-			}
-		}
-	}
-
-	// Quit action is reported.
-	if !g.apply(input.Quit, 0) {
-		t.Fatal("Quit action should return true")
+	if g.apply(input.Quit, 0, &in) != true {
+		t.Fatal("Quit should return true")
 	}
 }
 
-func sameAsPlayer(g *Game, x, y, z int) bool {
-	px, py, pz := g.playerCell()
-	return x == px && y == py && z == pz
+func TestFlyToggle(t *testing.T) {
+	g, scr := newSimGame(t)
+	defer scr.Fini()
+	var in physics.Intent
+	g.apply(input.ToggleFly, 0, &in)
+	if g.body.Mode != physics.Fly {
+		t.Fatal("ToggleFly should switch to Fly mode")
+	}
+	g.apply(input.ToggleFly, 0, &in)
+	if g.body.Mode != physics.Walk {
+		t.Fatal("ToggleFly should switch back to Walk mode")
+	}
 }
 
 func TestSelectCycling(t *testing.T) {
 	g, scr := newSimGame(t)
 	defer scr.Fini()
+	var in physics.Intent
 	start := g.selected
-	g.apply(input.SelectNext, 0)
+	g.apply(input.SelectNext, 0, &in)
 	if g.selected == start && len(world.Placeable) > 1 {
 		t.Fatal("SelectNext did not change the selected block")
 	}
-	g.apply(input.SelectSlot, 2)
+	g.apply(input.SelectSlot, 2, &in)
 	if g.selected != world.Placeable[2] {
 		t.Fatalf("SelectSlot(2) -> %v, want %v", g.selected, world.Placeable[2])
+	}
+}
+
+func TestPlaceRejectedInsidePlayer(t *testing.T) {
+	g, scr := newSimGame(t)
+	defer scr.Fini()
+	step(g, 180)
+	// Aim straight down at the block under the feet; placing on its top face
+	// would land in the player's own body and must be rejected.
+	g.cam.Pitch = -1.5
+	g.recomputeTarget()
+	if !g.target.OK {
+		t.Skip("no target under feet")
+	}
+	dx, dy, dz := g.target.Face.Normal()
+	nx, ny, nz := g.target.X+dx, g.target.Y+dy, g.target.Z+dz
+	before := g.world.At(nx, ny, nz)
+	if g.body.OccupiesCell(nx, ny, nz) {
+		var in physics.Intent
+		g.apply(input.Place, 0, &in)
+		if g.world.At(nx, ny, nz) != before {
+			t.Fatal("placed a block inside the player's body")
+		}
 	}
 }

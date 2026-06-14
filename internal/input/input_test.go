@@ -12,12 +12,14 @@ func TestRuneBindings(t *testing.T) {
 		's': MoveBack,
 		'a': StrafeLeft,
 		'd': StrafeRight,
-		' ': MoveUp,
+		' ': Jump,
 		'c': MoveDown,
 		'f': Break,
 		'r': Place,
 		'e': SelectNext,
 		'q': SelectPrev,
+		'g': ToggleFly,
+		'l': ToggleLighting,
 		'h': ToggleHelp,
 	}
 	for r, want := range cases {

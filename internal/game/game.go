@@ -1,6 +1,5 @@
-// Package game wires the world, camera, renderer, and input together and runs
-// the fixed-timestep loop. It owns player state (selected block, reach) that is
-// deliberately kept out of the pure camera.
+// Package game wires the world, camera, physics, renderer, and input together
+// and runs the fixed-timestep loop. It owns the player body and view state.
 package game
 
 import (
@@ -9,6 +8,7 @@ import (
 	"github.com/tyler-void/TermiGoCraft/internal/camera"
 	"github.com/tyler-void/TermiGoCraft/internal/entity"
 	"github.com/tyler-void/TermiGoCraft/internal/geom"
+	"github.com/tyler-void/TermiGoCraft/internal/physics"
 	"github.com/tyler-void/TermiGoCraft/internal/render"
 	"github.com/tyler-void/TermiGoCraft/internal/world"
 )
@@ -18,7 +18,9 @@ type Game struct {
 	scr    tcell.Screen
 	world  *world.World
 	cam    *camera.Camera
+	body   *physics.Body
 	buf    *render.Buffer
+	sun    render.Sun
 	target world.Hit
 
 	entities []entity.Entity
@@ -27,38 +29,40 @@ type Game struct {
 	selected  world.Block
 	selSlot   int
 	reach     float64
-	moveSpeed float64
 	turnSpeed float64
+	lit       bool
 	showHelp  bool
 }
 
-// New builds a game with a freshly generated world sized to the terminal.
+// New builds a game with a freshly generated world sized to the terminal. The
+// player spawns above the surface in walking mode under a fixed sun.
 func New(scr tcell.Screen, cols, rows int) *Game {
 	w := world.New(64, 32, 64)
 	spawnY := world.Generate(w)
 
-	cam := &camera.Camera{
-		Pos:   geom.Vec3{X: float64(w.SX) / 2, Y: float64(spawnY), Z: float64(w.SZ) / 2},
-		Yaw:   0,
-		Pitch: -0.2,
-		FOV:   1.3,
-	}
+	body := physics.NewBody(geom.Vec3{
+		X: float64(w.SX)/2 + 0.5,
+		Y: float64(spawnY),
+		Z: float64(w.SZ)/2 + 0.5,
+	})
+	cam := &camera.Camera{Pos: body.Eye(), Yaw: 0, Pitch: -0.2, FOV: 1.3}
 
 	g := &Game{
 		scr:       scr,
 		world:     w,
 		cam:       cam,
+		body:      body,
 		buf:       render.NewBuffer(cols, rows),
+		sun:       render.DefaultSun(),
 		selected:  world.Placeable[0],
 		selSlot:   0,
 		reach:     5.0,
-		moveSpeed: 0.45,
 		turnSpeed: 0.08,
+		lit:       true,
 		showHelp:  true,
 		heldMesh:  entity.Cube(0.35),
 	}
 
-	// A simple wandering marker entity sitting on the surface near spawn.
 	ex, ez := w.SX/2+4, w.SZ/2+2
 	ey := surfaceTop(w, ex, ez) + 1
 	g.entities = []entity.Entity{
